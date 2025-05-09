@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThingSpeak Data Viewer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.29.1/moment.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        .data-table th, .data-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        .data-table th {
+            background-color: #f2f2f2;
+        }
+        .data-table tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+        select, button {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background-color: white;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .loading {
+            text-align: center;
+            margin: 20px 0;
+            font-style: italic;
+            color: #666;
+        }
+        .error {
+            color: red;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .table-container {
+            overflow-x: auto;
+        }
+        .channel-info {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Previous Data Analysis</h1>
+        <div class="channel-info">
+            
+        </div>
+        
+        <div class="controls">
+            <div>
+                <label for="results">Results: </label>
+                <select id="results">
+                    <option value="10">10</option>
+                    <option value="20">20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                    <option value="500">1000</option>
+                    <option value="500">2000</option>
+                    <option value="500">3000</option>
+                    <option value="500">500000</option>
+                </select>
+            </div>
+            <div>
+                <label for="field">Field: </label>
+                <select id="field">
+                    <option value="all">All Fields</option>
+                    <option value="1">Field 1</option>
+                    <option value="2">Field 2</option>
+                    <option value="3">Field 3</option>
+                    <option value="4">Field 4</option>
+                    
+                </select>
+            </div>
+            <div>
+                <button id="fetchData">Fetch Data</button>
+            </div>
+        </div>
+        
+        <div id="loading" class="loading" style="display: none;">Loading data...</div>
+        <div id="error" class="error" style="display: none;"></div>
+        
+        <div class="table-container">
+            <table class="data-table" id="mainTable">
+                <thead id="tableHeader">
+                    <!-- Headers will be dynamically inserted -->
+                </thead>
+                <tbody id="dataTable">
+                    <!-- Data will be inserted here -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // Store ThingSpeak API details
+        const thingSpeakApiKey = "WQ38HT9QZWRE4FFX";
+        const channelNumber = 2948761;
+        
+        // Fetch data from ThingSpeak
+        function fetchThingSpeakData() {
+            const results = document.getElementById('results').value;
+            const fieldSelection = document.getElementById('field').value;
+            
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('error').style.display = 'none';
+            
+            // Construct the URL
+            let url;
+            if (fieldSelection === 'all') {
+                url = `https://api.thingspeak.com/channels/${channelNumber}/feeds.json?api_key=${thingSpeakApiKey}&results=${results}`;
+            } else {
+                url = `https://api.thingspeak.com/channels/${channelNumber}/fields/${fieldSelection}.json?api_key=${thingSpeakApiKey}&results=${results}`;
+            }
+            
+            fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    displayData(data, fieldSelection);
+                    document.getElementById('loading').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error fetching data:', error);
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('error').style.display = 'block';
+                    document.getElementById('error').textContent = `Error fetching data: ${error.message}`;
+                });
+        }
+        
+        // Display the data in table
+        function displayData(data, fieldSelection) {
+            if (!data.feeds || data.feeds.length === 0) {
+                document.getElementById('error').style.display = 'block';
+                document.getElementById('error').textContent = 'No data available for this selection.';
+                return;
+            }
+            
+            const tableHeader = document.getElementById('tableHeader');
+            const tableBody = document.getElementById('dataTable');
+            
+            // Clear existing data
+            tableHeader.innerHTML = '';
+            tableBody.innerHTML = '';
+            
+            // Create header row
+            const headerRow = document.createElement('tr');
+            headerRow.innerHTML = '<th>Entry ID</th><th>Date & Time</th>';
+            
+            // Determine which fields to show
+            const availableFields = [];
+            if (fieldSelection === 'all') {
+                // Check which fields exist in the data
+                for (let i = 1; i <= 8; i++) {
+                    const fieldKey = `field${i}`;
+                    if (data.feeds.some(feed => feed[fieldKey] !== null && feed[fieldKey] !== undefined)) {
+                        availableFields.push(i);
+                        headerRow.innerHTML += `<th>Field ${i}</th>`;
+                    }
+                }
+            } else {
+                availableFields.push(parseInt(fieldSelection));
+                headerRow.innerHTML += `<th>Field ${fieldSelection}</th>`;
+            }
+            
+            tableHeader.appendChild(headerRow);
+            
+            // Add data rows
+            data.feeds.forEach(feed => {
+                const row = document.createElement('tr');
+                const timestamp = moment(feed.created_at).format('YYYY-MM-DD HH:mm:ss');
+                
+                let rowHTML = `<td>${feed.entry_id}</td><td>${timestamp}</td>`;
+                
+                // Add field values
+                availableFields.forEach(fieldNum => {
+                    const fieldKey = `field${fieldNum}`;
+                    const value = feed[fieldKey] !== null && feed[fieldKey] !== undefined 
+                                ? feed[fieldKey] 
+                                : 'N/A';
+                    rowHTML += `<td>${value}</td>`;
+                });
+                
+                row.innerHTML = rowHTML;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // Initialize when the page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set up event listener for the fetch button
+            document.getElementById('fetchData').addEventListener('click', fetchThingSpeakData);
+            
+            // Initially load data
+            fetchThingSpeakData();
+        });
+    </script>
+</body>
+</html>
